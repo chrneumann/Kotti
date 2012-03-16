@@ -18,8 +18,8 @@ install_requires = [
     'Babel',
     'Chameleon>=2',
     'colander>=0.9.3',
-    'deform>=0.9.2', # Chameleon 2
-    'deform_bootstrap>=0.1a5', # search path
+    'deform>=0.9.4', # deform_bootstrap (needs fixing there)
+    'deform_bootstrap>=0.1', # checked_input widget
     'formencode',
     'lingua>=1.3',
     'plone.i18n<2.0', # >= 2.0 adds a huge number of dependencies
@@ -32,6 +32,7 @@ install_requires = [
     'pyramid_tm',
     'repoze.lru',
     'sqlalchemy>=0.7',
+    'transaction>=1.1.0', # ask c-neumann :-)
     'waitress',
     'zope.sqlalchemy',
     ]
@@ -63,7 +64,7 @@ class PyTest(Command):
         raise SystemExit(errno)
 
 setup(name='Kotti',
-      version='0.5.2',
+      version='0.6.0',
       description="Kotti is a high-level, 'Pythonic' web application framework. It includes a small and extensible CMS application called the Kotti CMS.",
       long_description='\n\n'.join([README, THANKS, CHANGES]),
       classifiers=[

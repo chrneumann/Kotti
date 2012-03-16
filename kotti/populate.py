@@ -6,7 +6,7 @@ from kotti.resources import Document
 from kotti.resources import Settings
 from kotti.security import get_principals
 from kotti.security import SITE_ACL
-from kotti.util import _
+
 
 def populate_users():
     principals = get_principals()
@@ -14,7 +14,7 @@ def populate_users():
         principals[u'admin'] = {
             'name': u'admin',
             'password': get_settings()['kotti.secret'],
-            'title': _(u"Administrator"),
+            'title': u"Administrator",
             'groups': [u'role:admin'],
             }
 

@@ -31,8 +31,9 @@ registered.
 """
 
 from collections import defaultdict
-try:
+try: # pragma: no cover
     from collections import OrderedDict
+    OrderedDict # pyflakes
 except ImportError: # pragma: no cover
     from ordereddict import OrderedDict
 from datetime import datetime
@@ -167,6 +168,7 @@ def set_owner(event):
     if request is not None and isinstance(obj, Node) and obj.owner is None:
         userid = authenticated_userid(request)
         if userid is not None:
+            userid = unicode(userid)
             # Set owner metadata:
             obj.owner = userid
             # Add owner role for userid if it's not inherited already:

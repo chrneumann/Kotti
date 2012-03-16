@@ -51,7 +51,7 @@ def inline_view(context, request, disposition='inline'):
             ],
         app_iter=context.data,
         )
-    
+
     return res
 
 def attachment_view(context, request):
@@ -80,7 +80,7 @@ class EditFileFormView(EditFormView):
             self.context.size = len(buf)
 
 class AddFileFormView(AddFormView):
-    item_type = u"file"
+    item_type = _(u"File")
 
     def schema_factory(self):
         tmpstore = FileUploadTempStore(self.request)
