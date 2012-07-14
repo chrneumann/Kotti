@@ -1,6 +1,7 @@
 from StringIO import StringIO
 from UserDict import DictMixin
 
+from colander import Invalid
 from colander import MappingSchema
 from colander import SchemaNode
 from colander import String
@@ -10,6 +11,7 @@ from deform.widget import FileUploadWidget
 from deform.widget import TextAreaWidget
 from pyramid.response import Response
 
+from kotti import get_settings
 from kotti.resources import File
 from kotti.util import _
 from kotti.views.form import (
@@ -17,6 +19,7 @@ from kotti.views.form import (
     EditFormView,
     AddFormView,
     )
+
 
 class FileUploadTempStore(DictMixin):
     def __init__(self, request):
@@ -43,6 +46,7 @@ class FileUploadTempStore(DictMixin):
     def preview_url(self, name):
         return None
 
+
 def inline_view(context, request, disposition='inline'):
     res = Response(
         headerlist=[
@@ -54,18 +58,32 @@ def inline_view(context, request, disposition='inline'):
     res.body = context.data
     return res
 
+
 def attachment_view(context, request):
     return inline_view(context, request, 'attachment')
+
+
+def validate_file_size_limit(node, value):
+    value['fp'].seek(0, 2)
+    size = value['fp'].tell()
+    value['fp'].seek(0)
+    max_size = get_settings()['kotti.max_file_size']
+    if size > int(max_size) * 1024 * 1024:
+        msg = _('Maximum file size: ${size}MB', mapping={'size': max_size})
+        raise Invalid(node, msg)
+
 
 class EditFileFormView(EditFormView):
     def schema_factory(self):
         tmpstore = FileUploadTempStore(self.request)
+
         class FileSchema(ContentSchema):
             file = SchemaNode(
                 FileData(),
                 title=_(u'File'),
                 missing=null,
                 widget=FileUploadWidget(tmpstore),
+                validator=validate_file_size_limit,
                 )
         return FileSchema()
 
@@ -79,12 +97,14 @@ class EditFileFormView(EditFormView):
             self.context.mimetype = appstruct['file']['mimetype']
             self.context.size = len(buf)
 
+
 class AddFileFormView(AddFormView):
     item_type = _(u"File")
     item_class = File
 
     def schema_factory(self):
         tmpstore = FileUploadTempStore(self.request)
+
         class FileSchema(MappingSchema):
             title = SchemaNode(String(), title=_(u'Title'), missing=u'')
             description = SchemaNode(
@@ -97,6 +117,7 @@ class AddFileFormView(AddFormView):
                 FileData(),
                 title=_(u'File'),
                 widget=FileUploadWidget(tmpstore),
+                validator=validate_file_size_limit,
                 )
         return FileSchema()
 
@@ -115,6 +136,7 @@ class AddFileFormView(AddFormView):
             mimetype=appstruct['file']['mimetype'],
             size=len(buf),
             )
+
 
 def includeme(config):
     config.add_view(

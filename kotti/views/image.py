@@ -67,11 +67,15 @@ class ImageView(object):
     @view_config(context=Image,
                  name="image",
                  permission='view')
-    def image(self):
-        """return the image in a specific scale, either inline (default) or as attachment"""
+    def image(self, subpath=None):
+        """Return the image in a specific scale, either inline
+        (default) or as attachment."""
+
+        if subpath is None:
+            subpath = self.request.subpath
 
         width, height = (None, None)
-        subpath = list(self.request.subpath)
+        subpath = list(subpath)
 
         if (len(subpath) > 0) and (subpath[-1] == "download"):
             disposition = "attachment"
@@ -94,34 +98,39 @@ class ImageView(object):
             image = self.context.data
 
         res = Response(
-            headerlist=[('Content-Disposition', '%s;filename="%s"' % (disposition,
-                                                                      self.context.filename.encode('ascii', 'ignore'))),
+            headerlist=[('Content-Disposition', '%s;filename="%s"' % (
+                disposition,
+                self.context.filename.encode('ascii', 'ignore'))),
                         ('Content-Length', str(len(image))),
-                        ('Content-Type', str(self.context.mimetype)), ],
-            app_iter=image)
+                        ('Content-Type', str(self.context.mimetype)),
+                        ],
+            app_iter=[image])
 
         return res
 
 
 def _load_image_scales(settings):
-
-    image_scale_strings = extract_from_settings('kotti.image_scales.', settings)
+    image_scale_strings = extract_from_settings(
+        'kotti.image_scales.', settings)
 
     for k in image_scale_strings.keys():
         image_scales[k] = [int(x) for x in image_scale_strings[k].split("x")]
 
 
 def includeme(config):
-
     _load_image_scales(config.registry.settings)
 
     config.scan("kotti.views.image")
-    config.add_view(AddImageFormView,
-                    name=Image.type_info.add_view,
-                    permission='add',
-                    renderer='kotti:templates/edit/node.pt',)
-    config.add_view(EditImageFormView,
-                    context=Image,
-                    name='edit',
-                    permission='edit',
-                    renderer='kotti:templates/edit/node.pt', )
+    config.add_view(
+        AddImageFormView,
+        name=Image.type_info.add_view,
+        permission='add',
+        renderer='kotti:templates/edit/node.pt',
+        )
+    config.add_view(
+        EditImageFormView,
+        context=Image,
+        name='edit',
+        permission='edit',
+        renderer='kotti:templates/edit/node.pt',
+        )

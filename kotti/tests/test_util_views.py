@@ -2,9 +2,12 @@ import time
 
 from mock import patch
 from mock import MagicMock
+from pyramid.request import Response
+from pytest import raises
 
 from kotti.testing import DummyRequest
 from kotti.testing import UnitTestBase
+
 
 def create_contents(root=None):
     from kotti.resources import get_root
@@ -26,6 +29,7 @@ def create_contents(root=None):
     aca = ac['aca'] = Content()
     acb = ac['acb'] = Content()
     return a, aa, ab, ac, aca, acb
+
 
 class TestTemplateAPI(UnitTestBase):
     def make(self, context=None, request=None, id=1, **kwargs):
@@ -108,8 +112,10 @@ class TestTemplateAPI(UnitTestBase):
         # these:
         class MyLink(ViewLink):
             permit = True
+
             def permitted(self, context, request):
                 return self.permit
+
         open_link = MyLink('open')
         secure_link = MyLink('secure')
         secure_link.permit = False
@@ -198,8 +204,56 @@ class TestTemplateAPI(UnitTestBase):
         api = self.make(request=request, bare=False)
         self.assertEqual(api.bare, False)
 
-    def test_slots(self):
+    def test_assign_to_slots(self):
+        from kotti.views.slots import assign_slot
+
+        def foo(context, request):
+            greeting = request.POST['greeting']
+            return Response(u"{0} world!".format(greeting))
+        self.config.add_view(foo, name='foo')
+        assign_slot('foo', 'left', params=dict(greeting=u"Y\u0153"))
+
+        api = self.make()
+        assert api.slots.left == [u"Y\u0153 world!"]
+
+    def test_assign_to_slot_predicate_mismatch(self):
+        from kotti.views.slots import assign_slot
+
+        def special(context, request):
+            return Response(u"Hello world!")
+        assign_slot('special', 'right')
+
+        self.config.add_view(special, name='special', request_method="GET")
+        api = self.make()
+        assert api.slots.right == []
+
+        self.config.add_view(special, name='special')
+        api = self.make()
+        assert api.slots.right == [u"Hello world!"]
+
+    def test_assign_slot_bad_name(self):
+        from kotti.views.slots import assign_slot
+
+        with raises(KeyError):
+            assign_slot('viewname', 'noslotlikethis')
+
+    def test_slot_request_has_attributes(self):
+        from kotti.views.slots import assign_slot
+
+        def my_viewlet(request):
+            assert hasattr(request, 'registry')
+            assert hasattr(request, 'context')
+            assert hasattr(request, 'user')
+            return Response(u"Hello world!")
+        assign_slot('my-viewlet', 'right')
+
+        self.config.add_view(my_viewlet, name='my-viewlet')
+        api = self.make()
+        assert api.slots.right == [u"Hello world!"]
+
+    def test_deprecated_slots(self):
         from kotti.views.slots import register, RenderAboveContent
+
         def render_something(context, request):
             return u"Hello, %s!" % context.title
         register(RenderAboveContent, None, render_something)
@@ -224,21 +278,25 @@ class TestTemplateAPI(UnitTestBase):
             )
 
     def test_slots_only_rendered_when_accessed(self):
-        from kotti.views.slots import register, RenderAboveContent
+        from kotti.views.slots import assign_slot
 
         called = []
-        def render_something(context, request):
+
+        def foo(context, request):
             called.append(True)
-        register(RenderAboveContent, None, render_something)
+            return Response(u"")
+
+        self.config.add_view(foo, name='foo')
+        assign_slot('foo', 'abovecontent')
 
         api = self.make()
         api.slots.belowcontent
-        self.assertFalse(called)
+        assert not called
 
         api.slots.abovecontent
-        self.assertEquals(len(called), 1)
+        assert len(called) == 1
         api.slots.abovecontent
-        self.assertEquals(len(called), 1)
+        assert len(called) == 1
 
     def test_format_datetime(self):
         import datetime
@@ -297,10 +355,13 @@ class TestTemplateAPI(UnitTestBase):
 
     def test_render_view(self):
         from pyramid.response import Response
+
         def first_view(context, request):
             return Response(u'first')
+
         def second_view(context, request):
             return Response(u'second')
+
         self.config.add_view(first_view, name='')
         self.config.add_view(second_view, name='second')
         api = self.make()
@@ -321,6 +382,7 @@ class TestTemplateAPI(UnitTestBase):
         api = self.make()
         self.assertEqual(api.get_type('Document'), Document)
         self.assertEqual(api.get_type('NoExist'), None)
+
 
 class TestViewUtil(UnitTestBase):
     def test_add_renderer_globals_json(self):
@@ -351,6 +413,7 @@ class TestViewUtil(UnitTestBase):
         add_renderer_globals(event)
         self.assertTrue('api' in event)
 
+
 class TestUtil(UnitTestBase):
     def test_ensure_view_selector(self):
         from kotti.views.util import ensure_view_selector
@@ -361,6 +424,7 @@ class TestUtil(UnitTestBase):
         wrapper(None, request)
         self.assertEqual(request.path_info, u'/@@edit')
 
+
 class TestLocalNavigationSlot(UnitTestBase):
     def setUp(self):
         super(TestLocalNavigationSlot, self).setUp()
@@ -368,37 +432,39 @@ class TestLocalNavigationSlot(UnitTestBase):
             'kotti:templates/view/nav-local.pt')
 
     def test_it(self):
-        from kotti.views.slots import render_local_navigation
+        from kotti.views.slots import local_navigation
         a, aa, ab, ac, aca, acb = create_contents()
 
-        assert render_local_navigation(ac, DummyRequest()) is not None
-        self.renderer.assert_(parent=ac, children=[aca, acb])
+        ret = local_navigation(ac, DummyRequest())
+        assert ret == dict(parent=ac, children=[aca, acb])
 
-        assert render_local_navigation(acb, DummyRequest()) is not None
-        self.renderer.assert_(parent=ac, children=[aca, acb])
+        ret = local_navigation(acb, DummyRequest())
+        assert ret == dict(parent=ac, children=[aca, acb])
 
-        assert render_local_navigation(a.__parent__, DummyRequest()) is None
+        assert local_navigation(a.__parent__,
+                DummyRequest())['parent'] is None
 
     @patch('kotti.views.slots.has_permission')
     def test_no_permission(self, has_permission):
-        from kotti.views.slots import render_local_navigation
+        from kotti.views.slots import local_navigation
         a, aa, ab, ac, aca, acb = create_contents()
 
         has_permission.return_value = True
-        assert render_local_navigation(ac, DummyRequest()) is not None
+        assert local_navigation(ac, DummyRequest())['parent'] is not None
 
         has_permission.return_value = False
-        assert render_local_navigation(ac, DummyRequest()) is None
+        assert local_navigation(ac, DummyRequest())['parent'] is None
 
     def test_in_navigation(self):
-        from kotti.views.slots import render_local_navigation
+        from kotti.views.slots import local_navigation
         a, aa, ab, ac, aca, acb = create_contents()
 
-        assert render_local_navigation(a, DummyRequest()) is not None
+        assert local_navigation(a, DummyRequest())['parent'] is not None
         aa.in_navigation = False
         ab.in_navigation = False
         ac.in_navigation = False
-        assert render_local_navigation(a, DummyRequest()) is None
+        assert local_navigation(a, DummyRequest())['parent'] is None
+
 
 class TestNodesTree(UnitTestBase):
     def test_it(self):
@@ -422,6 +488,7 @@ class TestNodesTree(UnitTestBase):
             0, 1, 2]
         assert [ch.id for ch in tree.children[0].children] == [
             ab.id, aa.id, ac.id]
+
 
 class TestTemplateStructure(UnitTestBase):
     def test_getattr(self):

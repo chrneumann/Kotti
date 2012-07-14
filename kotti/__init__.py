@@ -16,9 +16,6 @@ from pyramid.threadlocal import get_current_registry
 from pyramid.util import DottedNameResolver
 from pyramid_beaker import session_factory_from_settings
 
-import kotti.patches
-kotti.patches   # pyflakes
-
 from kotti.sqla import Base as KottiBase
 from kotti.util import request_cache
 
@@ -34,11 +31,14 @@ def authtkt_factory(**settings):
     return AuthTktAuthenticationPolicy(
         secret=settings['kotti.secret2'], callback=list_groups_callback)
 
+
 def acl_factory(**settings):
     return ACLAuthorizationPolicy()
 
+
 def beaker_session_factory(**settings):
     return session_factory_from_settings(settings)
+
 
 def none_factory(**kwargs):  # pragma: no cover
     return None
@@ -49,19 +49,38 @@ conf_defaults = {
     'kotti.configurators': '',
     'pyramid.includes': '',
     'kotti.includes': '',  # BBB
-    'kotti.base_includes': 'kotti kotti.events kotti.views kotti.views.cache kotti.views.view kotti.views.edit kotti.views.login kotti.views.file kotti.views.image kotti.views.users kotti.views.site_setup kotti.views.slots',
+    'kotti.base_includes': ' '.join([
+        'kotti kotti.events',
+        'kotti.views',
+        'kotti.views.cache',
+        'kotti.views.view',
+        'kotti.views.edit',
+        'kotti.views.login',
+        'kotti.views.file',
+        'kotti.views.image',
+        'kotti.views.users',
+        'kotti.views.site_setup',
+        ]),
     'kotti.asset_overrides': '',
     'kotti.use_tables': '',
     'kotti.root_factory': 'kotti.resources.default_get_root',
     'kotti.populators': 'kotti.populate.populate',
-    'kotti.available_types': 'kotti.resources.Document kotti.resources.File kotti.resources.Image',
+    'kotti.available_types': ' '.join([
+        'kotti.resources.Document',
+        'kotti.resources.File',
+        'kotti.resources.Image',
+        ]),
+    'kotti.search_content': 'kotti.views.util.default_search_content',
     'kotti.authn_policy_factory': 'kotti.authtkt_factory',
     'kotti.authz_policy_factory': 'kotti.acl_factory',
     'kotti.session_factory': 'kotti.beaker_session_factory',
     'kotti.principals_factory': 'kotti.security.principals_factory',
+    'kotti.caching_policy_chooser': (
+        'kotti.views.cache.default_caching_policy_chooser'),
     'kotti.date_format': 'medium',
     'kotti.datetime_format': 'medium',
     'kotti.time_format': 'medium',
+    'kotti.max_file_size': '10',
     'pyramid_deform.template_search_path': 'kotti:templates/deform',
     }
 
@@ -72,26 +91,22 @@ conf_dotted = set([
     'kotti.root_factory',
     'kotti.populators',
     'kotti.available_types',
+    'kotti.search_content',
     'kotti.authn_policy_factory',
     'kotti.authz_policy_factory',
     'kotti.session_factory',
     'kotti.principals_factory',
+    'kotti.caching_policy_chooser',
     ])
+
 
 def get_version():
     return pkg_resources.require("Kotti")[0].version
 
-@request_cache(lambda: None)
+
 def get_settings():
-    from kotti.resources import Settings
-    session = DBSession()
-    db_settings = session.query(Settings).order_by(desc(Settings.id)).first()
-    if db_settings is not None:
-        reg_settings = dict(get_current_registry().settings)
-        reg_settings.update(db_settings.data)
-        return reg_settings
-    else:
-        return get_current_registry().settings
+    return get_current_registry().settings
+
 
 def _resolve_dotted(d, keys=conf_dotted):
     for key in keys:
@@ -103,12 +118,14 @@ def _resolve_dotted(d, keys=conf_dotted):
             new_value.append(DottedNameResolver(None).resolve(dottedname))
         d[key] = new_value
 
+
 def main(global_config, **settings):
     """ This function is a 'paste.app_factory' and returns a WSGI
     application.
     """
     config = base_configure(global_config, **settings)
     return config.make_wsgi_app()
+
 
 def base_configure(global_config, **settings):
     """Resolve dotted names in settings, include plug-ins and create a
@@ -164,7 +181,12 @@ def base_configure(global_config, **settings):
     engine = engine_from_config(settings, 'sqlalchemy.')
     config._set_root_factory(appmaker(engine))
 
+    # add the authenticated user to the request object
+    from kotti.security import get_user
+    config.set_request_property(get_user, name="user", reify=True)
+
     return config
+
 
 def includeme(config):
     import kotti.views.util

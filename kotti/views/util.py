@@ -20,6 +20,8 @@ from pyramid.threadlocal import get_current_registry
 from pyramid.threadlocal import get_current_request
 from pyramid.view import render_view_to_response
 from zope.deprecation import deprecated
+from sqlalchemy import or_
+from zope.deprecation.deprecation import deprecate
 
 from kotti import get_settings
 from kotti import DBSession
@@ -30,6 +32,8 @@ from kotti.resources import Content
 from kotti.security import get_user
 from kotti.security import has_permission
 from kotti.security import view_permitted
+from kotti.static import edit_needed
+from kotti.static import view_needed
 from kotti.views.form import get_appstruct
 from kotti.views.form import BaseFormView
 from kotti.views.form import AddFormView
@@ -87,6 +91,7 @@ class TemplateStructure(object):
     def __getattr__(self, key):
         return getattr(self.html, key)
 
+
 class Slots(object):
     def __init__(self, context, request):
         self.context = context
@@ -108,6 +113,7 @@ class Slots(object):
                     value.append(snippet)
         setattr(self, name, value)
         return value
+
 
 class TemplateAPI(object):
     """This implements the 'api' object that's passed to all
@@ -137,6 +143,14 @@ class TemplateAPI(object):
         self.bare = bare
         self.slots = Slots(context, request)
         self.__dict__.update(kwargs)
+
+    @reify
+    def edit_needed(self):
+        return edit_needed.need()
+
+    @reify
+    def view_needed(self):
+        return view_needed.need()
 
     def macro(self, asset_spec, macro_name='main'):
         if self.bare and asset_spec in (
@@ -177,7 +191,9 @@ class TemplateAPI(object):
         return reversed(self.lineage)
 
     @reify
-    def user(self):
+    @deprecate('api.user is deprecated as of Kotti 0.7.0.  '
+               'Use ``request.user`` instead.')
+    def user(self):  # pragma: no cover
         return get_user(self.request)
 
     def has_permission(self, permission, context=None):
@@ -218,7 +234,7 @@ class TemplateAPI(object):
 
     def avatar_url(self, user=None, size="14", default_image='identicon'):
         if user is None:
-            user = self.user
+            user = self.request.user
         email = user.email
         if not email:
             email = user.name
@@ -285,6 +301,7 @@ def ensure_view_selector(func):
     wrapper.__doc__ = func.__doc__
     return wrapper
 
+
 class NavigationNodeWrapper(object):
     def __init__(self, node, request, item_mapping, item_to_children):
         self._node = node
@@ -307,6 +324,7 @@ class NavigationNodeWrapper(object):
     def __getattr__(self, name):
         return getattr(self._node, name)
 
+
 def nodes_tree(request):
     item_mapping = {}
     item_to_children = defaultdict(lambda: [])
@@ -324,6 +342,29 @@ def nodes_tree(request):
         item_mapping,
         item_to_children,
         )
+
+
+def search_content(search_term, request=None):
+    return get_settings()['kotti.search_content'][0](search_term, request)
+
+
+def default_search_content(search_term, request=None):
+    searchstring = u'%%%s%%' % search_term
+    results = DBSession.query(Content).filter(
+                or_(Content.name.like(searchstring),
+                    Content.title.like(searchstring),
+                    Content.description.like(searchstring),
+                   ))
+    result_dict = []
+    for result in results.all():
+        if has_permission('view', result, request):
+            result_dict.append(dict(
+                name=result.name,
+                title=result.title,
+                description=result.description,
+                path=request.resource_path(result)))
+    return result_dict
+
 
 # BBB starts here --- --- --- --- --- ---
 

@@ -66,7 +66,7 @@ class ContainerMixin(object, DictMixin):
             path = (path,)
         path = [unicode(p) for p in path]
 
-        # Optimization: don't query children if self._children is already there:
+        # Optimization: don't query children if self._children already there:
         if '_children' in self.__dict__:
             first, rest = path[0], path[1:]
             try:
@@ -179,16 +179,17 @@ class Node(Base, ContainerMixin, PersistentACLMixin):
         self.title = title
         self.annotations = annotations
 
-    # Provide location-awareness through __name__ and __parent__
     @property
     def __name__(self):
         return self.name
 
-    def get___parent__(self):
+    @property
+    def __parent__(self):
         return self.parent
-    def set___parent__(self, value):
+
+    @__parent__.setter
+    def __parent__(self, value):
         self.parent = value
-    __parent__ = property(get___parent__, set___parent__)
 
     def __repr__(self):
         return '<%s %s at %s>' % (
@@ -202,6 +203,7 @@ class Node(Base, ContainerMixin, PersistentACLMixin):
 
     copy_properties_blacklist = (
         'id', 'parent', 'parent_id', '_children', 'local_groups', '_tags')
+
     def copy(self, **kwargs):
         children = list(self.children)
         copy = self.__class__()
@@ -308,7 +310,7 @@ class Content(Node):
     def __init__(self, name=None, parent=None, title=u"", annotations=None,
                  default_view=None, description=u"", language=None,
                  owner=None, creation_date=None, modification_date=None,
-                 in_navigation=True, tags=[]):
+                 in_navigation=True, tags=None):
         super(Content, self).__init__(name, parent, title, annotations)
         self.default_view = default_view
         self.description = description
@@ -318,7 +320,7 @@ class Content(Node):
         # These are set by events if not defined at this point:
         self.creation_date = creation_date
         self.modification_date = modification_date
-        self.tags = tags
+        self.tags = tags or []
 
     def copy(self, **kwargs):
         tags = getattr(self, 'tags', None)
@@ -378,22 +380,6 @@ class Image(File):
         addable_to=[u'Document', ], )
 
 
-class Settings(Base):
-    __tablename__ = 'settings'
-
-    id = Column(Integer(), primary_key=True)
-    data = Column(JsonType())
-
-    def __init__(self, data):
-        self.data = data
-
-    def copy(self, newdata):
-        data = self.data.copy()
-        data.update(newdata)
-        copy = self.__class__(data)
-        return copy
-
-
 def get_root(request=None):
     return get_settings()['kotti.root_factory'][0](request)
 
@@ -415,8 +401,6 @@ def initialize_sql(engine, drop_all=False):
     settings = get_current_registry().settings
     tables = settings['kotti.use_tables'].strip() or None
     if tables:
-        if 'settings' not in tables:
-            tables += ' settings'
         tables = [metadata.tables[name] for name in tables.split()]
 
     if engine.dialect.name == 'mysql':  # pragma: no cover

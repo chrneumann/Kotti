@@ -10,12 +10,12 @@ INI File
 
 Kotti is configured using an INI configuration file.  The
 :ref:`installation` section explains how to get hold of a sample
-configuration file.  The ``[app:main]`` section in it might look like
+configuration file.  The ``[app:kotti]`` section in it might look like
 this:
 
 .. code-block:: ini
 
-  [app:main]
+  [app:kotti]
   use = egg:Kotti
   pyramid.reload_templates = true
   pyramid.debug_authorization = false
@@ -36,11 +36,11 @@ Overview of settings
 --------------------
 
 This table provides an overview of available settings.  All these
-settings must go into the ``[app:main]`` section of your Paste Deploy
+settings must go into the ``[app:kotti]`` section of your Paste Deploy
 configuration file.
 
 ===========================  ===================================================
-Setting                      Description                            
+Setting                      Description
 ===========================  ===================================================
 **kotti.site_title**         The title of your site
 **kotti.secret**             Secret token used for the initial admin password
@@ -56,6 +56,7 @@ kotti.base_includes          List of base Python configuration hooks
 kotti.configurators          List of advanced functions for config
 kotti.root_factory           Override Kotti's default Pyramid *root factory*
 kotti.populators             List of functions to fill initial database
+kotti.search_content         Override Kotti's default search function
 
 kotti.asset_overrides        Override Kotti's templates, CSS files and images.
 kotti.templates.api          Override ``api`` used by all templates
@@ -63,10 +64,12 @@ kotti.templates.api          Override ``api`` used by all templates
 kotti.authn_policy_factory   Component used for authentication
 kotti.authz_policy_factory   Component used for authorization
 kotti.session_factory        Component used for sessions
+kotti.caching_policy_chooser Component for choosing the cache header policy
 
 kotti.date_format            Date format to use, default: ``medium``
 kotti.datetime_format        Datetime format to use, default: ``medium``
 kotti.time_format            Time format to use, default: ``medium``
+kotti.max_file_size          Max size for file uploads, default: ```10`` (MB)
 
 pyramid.default_locale_name  Set the user interface language, default ``en``
 ===========================  ===================================================
@@ -154,7 +157,7 @@ we install the package from PyPI:
   bin/pip install kotti_twitter
 
 Then we activate the add-on in our site by editing the
-``pyramid.includes`` setting in the ``[app:main]`` section of our INI
+``pyramid.includes`` setting in the ``[app:kotti]`` section of our INI
 file.  (If a line with ``pyramid.includes`` does not exist, add it.)
 
 .. code-block:: ini
@@ -222,6 +225,37 @@ Populators are functions with no arguments that get called on system
 startup.  They may then make automatic changes to the database (before
 calling ``transaction.commit()``).
 
+.. _kotti.search_content:
+
+kotti.search_content
+````````````````````
+
+Kotti provides a simple search over the content types based on
+kotti.resources.Content. The default configuration here is:
+
+.. code-block:: ini
+
+  kotti.search_function = kotti.views.util.default_search_content
+
+You can provide an own search function in an add-on and register this
+in your INI file. The return value of the search function is a list of
+dictionaries, each representing a search result:
+
+.. code-block:: python
+
+  [{'title': 'Title of search result 1',
+    'description': 'Description of search result 1',
+    'path': '/path/to/search-result-1'},
+   {'title': 'Title of search result 2',
+    'description': 'Description of search result 2',
+    'path': '/path/to/search-result-2'},
+   ...
+   ]
+
+An add-on that defines an alternative search function is
+`kotti_solr`_, which provides an integration with the `Solr`_ search
+engine.
+
 .. _user interface language:
 
 Configure the user interface language
@@ -265,10 +299,49 @@ The ``kotti.session_factory`` configuration variable allows the
 overriding of the default session factory.  By default, Kotti uses
 ``pyramid_beaker`` for sessions.
 
+Caching
+-------
+
+You can override Kotti's default set of cache headers by changing the
+``kotti.views.cache.caching_policies`` dictionary, which maps policies
+to headers.  E.g. the ``Cache Resource`` entry there caches all static
+resources for 32 days.  You can also choose which responses match to
+which caching policy by overriding Kotti's default cache policy
+chooser through the use of the ``kotti.caching_policy_chooser``
+configuration variable.  The default is:
+
+.. code-block:: ini
+
+  kotti.caching_policy_chooser = kotti.views.cache.default_caching_policy_chooser
+
+Local navigation
+----------------
+
+Kotti provides a build in navigation widget, which is disabled by default.
+To enable the navigation widget add the following to the ``pyramid.includes``
+setting:
+
+.. code-block:: ini
+
+  pyramid.includes = kotti.views.slots.includeme_local_navigation
+
+The add-on `kotti_navigation`_ provides also a navigation widget with more features.
+With this add-on included your configuration looks like:
+
+.. code-block:: ini
+
+  pyramid.includes = kotti_navigation.include_navigation_widget
+
+Check the documentation of `kotti_navigation`_ for more options.
+
+
 .. _repoze.tm2: http://pypi.python.org/pypi/repoze.tm2
 .. _SQLAlchemy database URL: http://www.sqlalchemy.org/docs/core/engines.html#database-urls
 .. _Pyramid Configurator API: http://docs.pylonsproject.org/projects/pyramid/dev/api/config.html
 .. _kotti_twitter: http://pypi.python.org/pypi/kotti_twitter
+.. _kotti_navigation: http://pypi.python.org/pypi/kotti_navigation
+.. _kotti_solr: http://pypi.python.org/pypi/kotti_solr
+.. _Solr: http://lucene.apache.org/solr/
 .. _pyramid.authentication.AuthTktAuthenticationPolicy: http://docs.pylonsproject.org/projects/pyramid/dev/api/authentication.html
 .. _pyramid.authorization.ACLAuthorizationPolicy: http://docs.pylonsproject.org/projects/pyramid/dev/api/authorization.html
 .. _pyramid.session.UnencryptedCookieSessionFactoryConfig: http://docs.pylonsproject.org/projects/pyramid/dev/api/session.html

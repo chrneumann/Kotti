@@ -1,11 +1,16 @@
 import datetime
+from logging import getLogger
 
 from pyramid.events import subscriber
 from pyramid.events import NewResponse
 from pyramid.response import FileResponse
-from pyramid.security import authenticated_userid
+
+from kotti import get_settings
+from kotti.security import get_user
 
 CACHE_POLICY_HEADER = 'x-caching-policy'
+
+logger = getLogger(__name__)
 
 
 def set_max_age(response, delta, cache_ctrl=None):
@@ -69,18 +74,22 @@ caching_policies = {
 }
 
 
-def choose_caching_policy(context, request, response):
-    authenticated = authenticated_userid(request) is not None
-    if request.method != 'GET':
-        return 'No Cache'
+def default_caching_policy_chooser(context, request, response):
+    if request.method != 'GET' or response.status_int != 200:
+        return None
     elif isinstance(response, FileResponse):
         return 'Cache Resource'
-    elif authenticated:
+    elif get_user(request) is not None:
         return 'No Cache'
     elif response.headers['content-type'].startswith('text/html'):
         return 'Cache HTML'
     else:
         return 'Cache Media Content'
+
+
+def caching_policy_chooser(context, request, response):
+    return get_settings()['kotti.caching_policy_chooser'][0](
+        context, request, response)
 
 
 @subscriber(NewResponse)
@@ -92,7 +101,13 @@ def set_cache_headers(event):
     # CACHE_POLICY_HEADER header), we'll choose one at this point:
     caching_policy = response.headers.get(CACHE_POLICY_HEADER)
     if caching_policy is None:
-        caching_policy = choose_caching_policy(context, request, response)
+        try:
+            caching_policy = caching_policy_chooser(context, request, response)
+        except:
+            # We don't want to screw up the response if the
+            # caching_policy_chooser raises an exception.
+            logger.exception("{0} raised an exception.".format(
+                caching_policy_chooser))
     if caching_policy is not None:
         response.headers[CACHE_POLICY_HEADER] = caching_policy
 

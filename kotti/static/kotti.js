@@ -1,6 +1,7 @@
 var kotti = {
     dom_changed_handlers: new Array()
 };
+var jq = jQuery;
 
 (function($) {
 
@@ -97,5 +98,8 @@ var kotti = {
         });
         kotti.dom_changed(node);
     };
+
+    deform.load();
+    kotti.main();
 
  })(jQuery);

@@ -3,7 +3,6 @@ from kotti import get_version
 from kotti.resources import DBSession
 from kotti.resources import Node
 from kotti.resources import Document
-from kotti.resources import Settings
 from kotti.security import get_principals
 from kotti.security import SITE_ACL
 
@@ -18,16 +17,13 @@ def populate_users():
             'groups': [u'role:admin'],
             }
 
+
 def populate():
     if DBSession.query(Node).count() == 0:
         root = Document(**_ROOT_ATTRS)
         root.__acl__ = SITE_ACL
         DBSession.add(root)
         root['about'] = Document(**_ABOUT_ATTRS)
-
-    if DBSession.query(Settings).count() == 0:
-        settings = Settings(data={'kotti.db_version': get_version()})
-        DBSession.add(settings)
 
     populate_users()
 
