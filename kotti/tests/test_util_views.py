@@ -38,8 +38,7 @@ class TestTemplateAPI(UnitTestBase):
         from kotti.views.util import TemplateAPI
 
         if context is None:
-            session = DBSession()
-            context = session.query(Node).get(id)
+            context = DBSession.query(Node).get(id)
         if request is None:
             request = DummyRequest()
         return TemplateAPI(context, request, **kwargs)
@@ -354,8 +353,6 @@ class TestTemplateAPI(UnitTestBase):
         self.assertRaises(UnknownLocaleError, api.format_time, first)
 
     def test_render_view(self):
-        from pyramid.response import Response
-
         def first_view(context, request):
             return Response(u'first')
 
