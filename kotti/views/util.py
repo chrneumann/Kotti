@@ -20,6 +20,8 @@ from pyramid.threadlocal import get_current_registry
 from pyramid.threadlocal import get_current_request
 from pyramid.view import render_view_to_response
 from zope.deprecation import deprecated
+from sqlalchemy import and_
+from sqlalchemy import not_
 from sqlalchemy import or_
 from zope.deprecation.deprecation import deprecate
 
@@ -29,11 +31,10 @@ from kotti.util import disambiguate_name
 disambiguate_name  # BBB
 from kotti.events import objectevent_listeners
 from kotti.resources import Content
+from kotti.resources import Document
 from kotti.security import get_user
 from kotti.security import has_permission
 from kotti.security import view_permitted
-from kotti.static import edit_needed
-from kotti.static import view_needed
 from kotti.views.form import get_appstruct
 from kotti.views.form import BaseFormView
 from kotti.views.form import AddFormView
@@ -146,11 +147,19 @@ class TemplateAPI(object):
 
     @reify
     def edit_needed(self):
-        return edit_needed.need()
+
+        if 'kotti.static.edit_needed' in self.S:
+            return [r.need() for r in self.S['kotti.static.edit_needed']]
+
+        return None
 
     @reify
     def view_needed(self):
-        return view_needed.need()
+
+        if 'kotti.static.view_needed' in self.S:
+            return [r.need() for r in self.S['kotti.static.view_needed']]
+
+        return None
 
     def macro(self, asset_spec, macro_name='main'):
         if self.bare and asset_spec in (
@@ -349,20 +358,36 @@ def search_content(search_term, request=None):
 
 
 def default_search_content(search_term, request=None):
+
     searchstring = u'%%%s%%' % search_term
-    results = DBSession.query(Content).filter(
-        or_(Content.name.like(searchstring),
-            Content.title.like(searchstring),
-            Content.description.like(searchstring)))
-    result_dict = []
-    for result in results.all():
+
+    # generic_filter can be applied to all Node (and subclassed) objects
+    generic_filter = or_(Content.name.like(searchstring),
+                         Content.title.like(searchstring),
+                         Content.description.like(searchstring))
+
+    generic_results = DBSession.query(Content).filter(generic_filter)
+
+    # specific result contain objects matching additional criteria
+    # but must not match the generic criteria (because these objects
+    # are already in the generic_results)
+    document_results = DBSession.query(Document).filter(
+        and_(Document.body.like(searchstring),
+             not_(generic_filter)))
+
+    all_results = [c for c in generic_results.all()] \
+        + [c for c in document_results.all()]
+
+    result_dicts = []
+
+    for result in all_results:
         if has_permission('view', result, request):
-            result_dict.append(dict(
+            result_dicts.append(dict(
                 name=result.name,
                 title=result.title,
                 description=result.description,
                 path=request.resource_path(result)))
-    return result_dict
+    return result_dicts
 
 
 # BBB starts here --- --- --- --- --- ---
