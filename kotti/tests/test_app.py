@@ -1,3 +1,4 @@
+from unittest import TestCase
 import warnings
 
 from pyramid.interfaces import IAuthenticationPolicy
@@ -184,9 +185,13 @@ class TestApp(UnitTestBase):
 
         settings = self.required_settings()
         settings['kotti.site_title'] = 'K\xc3\xb6tti'  # Kötti
+        settings['kotti_foo.site_title'] = 'K\xc3\xb6tti'
+        settings['foo.site_title'] = 'K\xc3\xb6tti'
 
         main({}, **settings)
-        self.assertEqual(get_settings()['kotti.site_title'], u'K\xf6tti')
+        assert get_settings()['kotti.site_title'] == u'K\xf6tti'
+        assert get_settings()['kotti_foo.site_title'] == u'K\xf6tti'
+        assert get_settings()['foo.site_title'] == 'K\xc3\xb6tti'
 
     def test_search_content(self):
         from kotti import main
@@ -196,3 +201,9 @@ class TestApp(UnitTestBase):
         settings['kotti.search_content'] = 'kotti.tests.test_app._dummy_search'
         main({}, **settings)
         assert search_content(u"Nuno") == u"Not found. Sorry!"
+
+
+class TestGetVersion(TestCase):
+    def test_it(self):
+        from kotti import get_version
+        assert isinstance(get_version(), str)

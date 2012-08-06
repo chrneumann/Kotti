@@ -32,6 +32,7 @@ from kotti import get_settings
 from kotti import metadata
 from kotti import DBSession
 from kotti import Base
+from kotti.migrate import stamp_heads
 from kotti.security import PersistentACLMixin
 from kotti.security import view_permitted
 from kotti.sqla import ACLType
@@ -279,6 +280,7 @@ class Content(Node):
     description = Column(UnicodeText())
     language = Column(Unicode(10))
     owner = Column(Unicode(100))
+    state = Column(String(50))
     creation_date = Column(DateTime())
     modification_date = Column(DateTime())
     in_navigation = Column(Boolean())
@@ -406,9 +408,15 @@ def initialize_sql(engine, drop_all=False):
         from sqlalchemy.dialects.mysql.base import LONGBLOB
         File.__table__.c.data.type = LONGBLOB()
 
+    # Allow migrations to set the 'head' stamp in case the database is
+    # initialized freshly:
+    if not engine.table_names():
+        stamp_heads()
+
     metadata.create_all(engine, tables=tables)
-    for populate in get_settings()['kotti.populators']:
-        populate()
+    if os.environ.get('KOTTI_DISABLE_POPULATORS', '0') not in ('1', 'y'):
+        for populate in get_settings()['kotti.populators']:
+            populate()
     commit()
 
     return DBSession
