@@ -24,7 +24,7 @@ Unfortunately, this won't help in the situation where a user adds an
 add-on with migrations to the Kotti site _after_ the database was
 initialized for the first time.  In this case, users of the add-on
 will need to run ``kotti-migrate stamp_head
---location=yourpackage:alembic``, or the add-on author will have to
+--scripts=yourpackage:alembic``, or the add-on author will have to
 write equivalent code somewhere in their populate hook.
 
 Add-on authors can register their Alembic scripts with this module by
@@ -47,11 +47,13 @@ from alembic.config import Config
 from alembic.environment import EnvironmentContext
 from alembic.script import ScriptDirectory
 from alembic.util import load_python_file
-from docopt import docopt
-from pyramid.paster import bootstrap
+from zope.sqlalchemy import mark_changed
 
 from kotti import conf_defaults
 from kotti import get_settings
+from kotti import DBSession
+from kotti.util import command
+
 
 KOTTI_SCRIPT_DIR = pkg_resources.resource_filename('kotti', 'alembic')
 DEFAULT_LOCATION = 'kotti:alembic'
@@ -112,18 +114,17 @@ def get_locations():
 
 
 def stamp_head(location=DEFAULT_LOCATION, revision=None):
-    pkg_env = PackageEnvironment(location)
-
     def do_stamp(rev, context, revision=revision):
         current = context._current_rev()
         if revision is None:
-            revision = pkg_env.script_dir.get_current_head()
+            revision = context.script.get_current_head()
         elif revision == 'None':
             revision = None
         context._update_current_rev(current, revision)
+        mark_changed(DBSession())
         return []
 
-    pkg_env.run_env(do_stamp)
+    PackageEnvironment(location).run_env(do_stamp)
 
 
 def stamp_heads():
@@ -143,7 +144,7 @@ def upgrade(location=DEFAULT_LOCATION):
             return []
         print(u'  - upgrading from {0} to {1}...'.format(
             rev, revision))
-        return pkg_env.script_dir._upgrade_revs(revision, rev)
+        return context.script._upgrade_revs(revision, rev)
 
     pkg_env.run_env(
         upgrade,
@@ -177,7 +178,7 @@ def list_all():
         print
 
 
-def main():
+def kotti_migrate_command():
     __doc__ = """Migrate Kotti and Kotti add-ons.
 
     Usage:
@@ -216,26 +217,29 @@ def main():
     # setting to an empty list.  Since add-ons might add to this list
     # again later, when we call 'bootstrap' (and thus their
     # 'includeme' function).
+    save_conf_defaults = conf_defaults.copy()
+
     os.environ['KOTTI_DISABLE_POPULATORS'] = '1'
     conf_defaults['kotti.root_factory'] = [lambda req: None]
 
-    arguments = docopt(__doc__)
-    pyramid_env = bootstrap(arguments['<config_uri>'])
-
-    args = ()
-    args_with_location = (arguments['--scripts'] or DEFAULT_LOCATION,)
-    if arguments['list_all']:
-        func = list_all
-    elif arguments['upgrade']:
-        func = upgrade
-        args = args_with_location
-    elif arguments['upgrade_all']:
-        func = upgrade_all
-    elif arguments['stamp_head']:
-        func = stamp_head
-        args = args_with_location + (arguments['--rev'],)
+    def callback(arguments):
+        args = ()
+        args_with_location = (arguments['--scripts'] or DEFAULT_LOCATION,)
+        if arguments['list_all']:
+            func = list_all
+        elif arguments['upgrade']:
+            func = upgrade
+            args = args_with_location
+        elif arguments['upgrade_all']:
+            func = upgrade_all
+        elif arguments['stamp_head']:
+            func = stamp_head
+            args = args_with_location + (arguments['--rev'],)
+        func(*args)
 
     try:
-        func(*args)
+        return command(callback, __doc__)
     finally:
-        pyramid_env['closer']()
+        conf_defaults.clear()
+        conf_defaults.update(save_conf_defaults)
+        del os.environ['KOTTI_DISABLE_POPULATORS']

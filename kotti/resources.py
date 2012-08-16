@@ -114,6 +114,14 @@ class IContent(Interface):
     pass
 
 
+class IDocument(Interface):
+    pass
+
+
+class IDefaultWorkflow(Interface):
+    pass
+
+
 class LocalGroup(Base):
     __tablename__ = 'local_groups'
     __table_args__ = (
@@ -330,6 +338,8 @@ class Content(Node):
 
 
 class Document(Content):
+    implements(IDocument, IDefaultWorkflow)
+
     id = Column(Integer(), ForeignKey('contents.id'), primary_key=True)
     body = Column(UnicodeText())
     mime_type = Column(String(30))
